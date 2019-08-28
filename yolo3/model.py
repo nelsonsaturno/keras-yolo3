@@ -148,7 +148,7 @@ def yolo_head(feats, anchors, num_classes, input_shape, calc_loss=False):
 
 
 def yolo_correct_boxes(box_xy, box_wh, input_shape, image_shape):
-    '''Get corrected boxes'''
+    """Get corrected boxes"""
     box_yx = box_xy[..., ::-1]
     box_hw = box_wh[..., ::-1]
     input_shape = K.cast(input_shape, K.dtype(box_yx))
@@ -230,7 +230,7 @@ def yolo_eval(yolo_outputs,
 
 
 def preprocess_true_boxes(true_boxes, input_shape, anchors, num_classes):
-    '''Preprocess true boxes to training input format
+    """Preprocess true boxes to training input format
 
     Parameters
     ----------
@@ -244,8 +244,8 @@ def preprocess_true_boxes(true_boxes, input_shape, anchors, num_classes):
     -------
     y_true: list of array, shape like yolo_outputs, xywh are reletive value
 
-    '''
-    assert (true_boxes[..., 4]<num_classes).all(), 'class id must be less than num_classes'
+    """
+    assert (true_boxes[..., 4] < num_classes).all(), 'class id must be less than num_classes'
     num_layers = len(anchors)//3 # default setting
     anchor_mask = [[6,7,8], [3,4,5], [0,1,2]] if num_layers==3 else [[3,4,5], [1,2,3]]
 

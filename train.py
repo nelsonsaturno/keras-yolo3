@@ -1,8 +1,13 @@
 """
 Retrain the YOLO model for your own dataset.
 """
-
+import pickle
 import numpy as np
+import pandas as pd
+import ujson
+import cv2
+import os
+from sklearn.model_selection import train_test_split
 import keras.backend as K
 from keras.layers import Input, Lambda
 from keras.models import Model
@@ -11,6 +16,55 @@ from keras.callbacks import TensorBoard, ModelCheckpoint, ReduceLROnPlateau, Ear
 
 from yolo3.model import preprocess_true_boxes, yolo_body, tiny_yolo_body, yolo_loss
 from yolo3.utils import get_random_data
+
+NUM_CLASSES = 8
+
+labels_dict = {
+    'bed': 0,
+    'cat': 1,
+    'chair': 2,
+    'dining table': 3,
+    'dog': 4,
+    'person': 5,
+    'refrigerator': 6,
+    'tv': 7
+}
+
+
+def chunks(df, n):
+    """Yield n rows of striped chunks from df."""
+    i = 0
+    while i < len(df):
+        yield df[i:n + i]
+        i += n
+
+
+def encode_image(file_path):
+    im = cv2.imread(file_path)
+    im = cv2.resize(im, (500, 500))
+    im = (im * 1.) / 255
+    return im
+
+
+def encode_batch(chunked_df, base_path):
+    encoded_files = []
+    y_labels = []
+    y_boxes = []
+    for _, row in chunked_df.iterrows():
+        file_path = os.path.join(base_path, row['file_name'])
+        encoded_files.append(encode_image(file_path))
+        encoded_labels = [0] * NUM_CLASSES
+        encoded_labels[labels_dict[row['label']]] = 1.
+        y_labels.append(encoded_labels)
+        y_boxes.append(np.array([row['xmin'], row['ymin'], row['xmax'], row['ymax']]))
+    return np.array(encoded_files), [np.array(y_boxes), np.array(y_labels)]
+
+
+def image_generator(base_path, data_df, batch_size):
+    i = 0
+    while i < len(data_df):
+        yield encode_batch(data_df[i:batch_size + i], base_path)
+        i += batch_size
 
 
 def _main():
@@ -39,13 +93,8 @@ def _main():
     early_stopping = EarlyStopping(monitor='val_loss', min_delta=0, patience=10, verbose=1)
 
     val_split = 0.1
-    with open(annotation_path) as f:
-        lines = f.readlines()
-    np.random.seed(10101)
-    np.random.shuffle(lines)
-    np.random.seed(None)
-    num_val = int(len(lines)*val_split)
-    num_train = len(lines) - num_val
+
+    # Generator
 
     # Train with frozen layers first, to get a stable loss.
     # Adjust num epochs to your dataset. This step is enough to obtain a not bad model.
@@ -132,6 +181,7 @@ def create_model(input_shape, anchors, num_classes, load_pretrained=True, freeze
 
     return model
 
+
 def create_tiny_model(input_shape, anchors, num_classes, load_pretrained=True, freeze_body=2,
             weights_path='model_data/tiny_yolo_weights.h5'):
     '''create the training model, for Tiny YOLOv3'''
@@ -162,6 +212,7 @@ def create_tiny_model(input_shape, anchors, num_classes, load_pretrained=True, f
 
     return model
 
+
 def data_generator(annotation_lines, batch_size, input_shape, anchors, num_classes):
     '''data generator for fit_generator'''
     n = len(annotation_lines)
@@ -181,10 +232,12 @@ def data_generator(annotation_lines, batch_size, input_shape, anchors, num_class
         y_true = preprocess_true_boxes(box_data, input_shape, anchors, num_classes)
         yield [image_data, *y_true], np.zeros(batch_size)
 
+
 def data_generator_wrapper(annotation_lines, batch_size, input_shape, anchors, num_classes):
     n = len(annotation_lines)
     if n==0 or batch_size<=0: return None
     return data_generator(annotation_lines, batch_size, input_shape, anchors, num_classes)
+
 
 if __name__ == '__main__':
     _main()
